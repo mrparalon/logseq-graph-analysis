@@ -20,7 +20,7 @@ export async function findNodes(query: string | undefined, graph: Graph) {
       (node: string, data: Attributes) =>
         data.label?.match(query) ||
         data["aliases"]?.find((a: string) =>
-          a.toUpperCase().match(query.toUpperCase())
+          a.match(query + "/i")
         )
     );
   }

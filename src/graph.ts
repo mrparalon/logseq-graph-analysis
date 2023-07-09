@@ -14,6 +14,7 @@ import {
   Block,
   getBlockFn,
 } from "./logseq";
+import { findNodes } from "./settings/helpers/search";
 
 type getAllPagesFn = () => Promise<Page[]>;
 type getBlockReferencesFn = () => Promise<Block[][]>;
@@ -50,13 +51,14 @@ export async function buildGraph(
     g.addNode(page.id, {
       ...(icon
         ? {
-            type: "image",
-            image: `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='1.1em' x='0.2em' font-size='70'>${icon}</text></svg>`,
-          }
+          type: "image",
+          image: `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='1.1em' x='0.2em' font-size='70'>${icon}</text></svg>`,
+        }
         : {
-            type: "circle",
-          }),
-      label: page.name,
+          type: "circle",
+        }),
+      //@ts-ignore
+      label: page.originalName,
       aliases: pageToAliases(page, true),
       rawAliases: pageToAliases(page, false),
     });
@@ -96,7 +98,7 @@ export async function buildGraph(
 
 
   console.log("graph complete", g.size);
-  if (!g.getAttribute("isInited")){
+  if (!g.getAttribute("isInited")) {
     random.assign(g);
     g.setAttribute("isInited", true);
   }
@@ -160,33 +162,28 @@ export function nodeNameIndex(graph: Graph): Map<string, string> {
   return map;
 }
 
-export function filter(
-  graph: Graph,
-  search: string
-): (node: string, searchLen: number) => boolean {
+export function filter(graph: Graph, search: string, searchLen: number) {
   const undirected = toUndirected(graph);
   const map = new Map<string, number>();
-  for (const node of graph.nodeEntries()) {
-    const label = node.attributes.label.toUpperCase();
-    const searchUp = search.toUpperCase();
-    if (label.includes(searchUp)) {
-      const len = singleSourceLength(undirected, node.node);
-      for (const [key, val] of Object.entries(len)) {
-        const cur = map.get(key);
-        if (!cur || cur > val) {
-          map.set(key, val);
+  findNodes(search, graph).then((nodes) => {
+    for (const node of nodes) {
+      const lenToAllOtherNodes = singleSourceLength(undirected, node);
+      for (const [nodeId, lenToNode] of Object.entries(lenToAllOtherNodes)) {
+        const prevLenToNode = map.get(nodeId);
+        // set if not set or shorter
+        if (!prevLenToNode || prevLenToNode > lenToNode) {
+          map.set(nodeId, lenToNode);
         }
       }
     }
-  }
-  console.log(map);
-  return (node, searchLen) => {
-    const len = map.get(node);
-    if (len === undefined) {
-      return true;
+    for (const [node, len] of map.entries()) {
+      if (len === undefined || searchLen <= len)
+        console.log(len)
+        graph.setNodeAttribute(node, "hidden", true);
     }
-    return searchLen <= len;
-  };
+  });
+
+
 }
 
 if (import.meta.vitest) {

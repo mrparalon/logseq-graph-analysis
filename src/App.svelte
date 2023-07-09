@@ -133,12 +133,7 @@
       return graph;
     }
 
-    const filterFn = filter(graph, search);
-    graph.forEachNode((node) => {
-      if (filterFn(node, filterLength)) {
-        graph.setNodeAttribute(node, "hidden", true);
-      }
-    });
+    filter(graph, search, filterLength);
     return graph;
   }
 </script>
