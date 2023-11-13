@@ -47,7 +47,6 @@
     const theme = getTheme($settings.themeMode);
     sigma = new ExtendedSigma(graph, sigmaRef, {
       allowInvalidContainer: true,
-      nodeReducer,
       edgeReducer,
       defaultNodeColor: theme.nodeColor,
       defaultEdgeColor: theme.edgeColor,
@@ -62,6 +61,7 @@
       },
       hoverRenderer: drawHover,
     });
+    setNodeSizeAndColor(graph);
 
     sigma.on("clickNode", handleNodeClick);
 
@@ -128,69 +128,6 @@
     }
   };
 
-  const nodeReducer = (node: string, data: Attributes) => {
-    const graph = sigma?.getGraph()!;
-    const res: Partial<NodeDisplayData> = { ...data };
-    if ($settings.size === "in") {
-      res.size = maxSize(Math.max(2, graph.neighbors(node).length / 2), 16);
-    } else if ($settings.size === "out") {
-      res.size = maxSize(graph.inDegree(node), 16);
-    }
-
-    if ($settings.mode === Mode.ShortestPath) {
-      const pathA =
-        $settings.pathA && nodeIndex?.get($settings.pathA.toUpperCase());
-      const pathB =
-        $settings.pathB && nodeIndex?.get($settings.pathB.toUpperCase());
-
-      if (
-        shortestNodePath?.includes(node) ||
-        node === pathA ||
-        node === pathB
-      ) {
-        res.color = red;
-        res.zIndex = 2;
-        res.highlighted = true;
-      } else {
-        res.zIndex = -1;
-      }
-    }
-
-    if ($settings.mode === Mode.AdamicAdar && adamicAdarResults) {
-      const pathA =
-        $settings.pathA && nodeIndex?.get($settings.pathA.toUpperCase());
-      if (pathA && node === pathA) {
-        res.size = 10;
-        res.zIndex = 2;
-        res.color = orange;
-        res.highlighted = true;
-      } else if (adamicAdarResults[node]) {
-        res.color = red;
-        res.size = maxSize(
-          $settings.bubbleSize * adamicAdarResults[node].measure,
-          32
-        );
-        res.label = `${adamicAdarResults[node].measure} ${data.label}`;
-      }
-    }
-    if ($settings.mode === Mode.CoCitation && coCitationResults) {
-      const pathA =
-        $settings.pathA && nodeIndex?.get($settings.pathA.toUpperCase());
-      if (pathA && node === pathA) {
-        res.size = 10;
-        res.zIndex = 2;
-        res.color = orange;
-        res.highlighted = true;
-      } else if (coCitationResults[node]) {
-        res.color = red;
-        res.size = $settings.bubbleSize * coCitationResults[node].measure;
-        res.label = `${coCitationResults[node].measure} ${data.label}`;
-      }
-    }
-
-    return res;
-  };
-
   let shortestNodePath: Array<string> | undefined | null;
   let shortestEdgePath: Array<string> | undefined | null;
   let adamicAdarResults: ResultMap | undefined;
@@ -201,6 +138,16 @@
   $: if (sigma) {
     findNodes($settings.search, sigma.getGraph()).then((res) => {
       foundNodeIds = res;
+    });
+  }
+
+  function setNodeSizeAndColor(graph: Graph) {
+    graph.updateEachNodeAttributes((node, attr: Attributes) => {
+      if ($settings.size === "in") {
+        attr.size = maxSize(Math.max(2, graph.neighbors(node).length / 2), 16);
+      } else if ($settings.size === "out") {
+        attr.size = maxSize(graph.inDegree(node), 16);
+      }
     });
   }
 
@@ -216,6 +163,7 @@
       sigma.setSetting("labelShadowColor", theme.nodeLabelShadowColor);
       graph.updateEachNodeAttributes((_, attr) => {
         attr.color = theme.nodeColor;
+        attr.size = 2;
         return attr;
       });
       $settings.filters.forEach((filter) => {
@@ -233,19 +181,75 @@
         });
       });
       if (foundNodeIds) {
+        graph.updateEachNodeAttributes((node, attr: Attributes) => {
+          attr.highlighted = false;
+          attr.size = (attr.size ?? attr.size) + 2;
+
+          return attr;
+        });
+      }
       graph.updateEachNodeAttributes((node, attr: Attributes) => {
-        attr.highlighted = false;
-        attr.size = (attr.size ?? attr.size) + 2;
         if (foundNodeIds?.includes(node)) {
           attr.color = orange;
           attr.highlighted = true;
           attr.size = (attr.size ?? attr.size) + 2;
           return attr;
         }
+        setNodeSizeAndColor(attr, node, graph);
+
+        if ($settings.mode === Mode.ShortestPath) {
+          const pathA =
+            $settings.pathA && nodeIndex?.get($settings.pathA.toUpperCase());
+          const pathB =
+            $settings.pathB && nodeIndex?.get($settings.pathB.toUpperCase());
+
+          if (
+            shortestNodePath?.includes(node) ||
+            node === pathA ||
+            node === pathB
+          ) {
+            attr.color = red;
+            attr.zIndex = 2;
+            attr.highlighted = true;
+          } else {
+            attr.zIndex = -1;
+          }
+        }
+
+        if ($settings.mode === Mode.AdamicAdar && adamicAdarResults) {
+          const pathA =
+            $settings.pathA && nodeIndex?.get($settings.pathA.toUpperCase());
+          if (pathA && node === pathA) {
+            attr.size = 10;
+            attr.zIndex = 2;
+            attr.color = orange;
+            attr.highlighted = true;
+          } else if (adamicAdarResults[node]) {
+            attr.color = red;
+            attr.size = maxSize(
+              $settings.bubbleSize * adamicAdarResults[node].measure,
+              32
+            );
+            attr.label = `${adamicAdarResults[node].measure} ${attr.label}`;
+          }
+        }
+        if ($settings.mode === Mode.CoCitation && coCitationResults) {
+          const pathA =
+            $settings.pathA && nodeIndex?.get($settings.pathA.toUpperCase());
+          if (pathA && node === pathA) {
+            attr.size = 10;
+            attr.zIndex = 2;
+            attr.color = orange;
+            attr.highlighted = true;
+          } else if (coCitationResults[node]) {
+            attr.color = red;
+            attr.size = $settings.bubbleSize * coCitationResults[node].measure;
+            attr.label = `${coCitationResults[node].measure} ${attr.label}`;
+          }
+        }
         return attr;
-      })
+      });
     }
-  }
   }
 
   $: if (sigma && ($settings.pathA || $settings.pathB || $settings.search)) {
